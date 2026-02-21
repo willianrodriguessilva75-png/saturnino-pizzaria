@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saturnino Pizzaria - Controle de Produção</title>
+    
+    <!-- PWA Manifest & Meta Tags -->
+    <meta name="theme-color" content="#d97706">
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIlNhdHVybmlubyBQaXp6YXJpYSIsCiAgInNob3J0X25hbWUiOiAiU2F0dXJuaW5vIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiNmZmZmZmYiLAogICJ0aGVtZV9jb2xvciIjogIiNkOTc3MDYiLAogICJpY29ucyI6IFt7CiAgICAic3JjIjogImh0dHBzOi8vY2RuLWljb25zLXBuZy5mbGF0aWNvbi5jb20vNTEyLzcwNi83MDY5MzQucG5nIiwKICAgICJzaXplcyI6ICI1MTJ4NTEyIiwKICAgICJ0eXBlIjogImltYWdlL3BuZyIKICB9XQp9">
+    
+    <!-- Estilos (Tailwind CSS) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Ícones -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- OCR Engine -->
+    <script src='https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js'></script>
+    <!-- Biblioteca de Tempo (Day.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+
+    <style>
+        .loader { border-top-color: #d97706; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @-webkit-keyframes spinner { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans pb-20">
+
+    <!-- Cabeçalho -->
+    <header class="bg-yellow-600 text-white p-4 shadow-md sticky top-0 z-50">
+        <div class="flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="pizza"></i> Saturnino Pizzaria
+            </h1>
+            <button onclick="mostrarConfig()" class="p-2"><i data-lucide="settings"></i></button>
+        </div>
+        <div id="colaborador-display" class="text-sm mt-1 opacity-90">Selecione um colaborador</div>
+    </header>
+
+    <!-- Tela Principal -->
+    <main class="p-4 max-w-md mx-auto">
+        
+        <!-- Botão de Câmera -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6 text-center border-2 border-dashed border-yellow-500">
+            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="processarImagem(this)">
+            <label for="cameraInput" class="cursor-pointer flex flex-col items-center gap-3">
+                <div class="bg-yellow-100 p-4 rounded-full text-yellow-600">
+                    <i data-lucide="camera" size="48"></i>
+                </div>
+                <span class="font-bold text-lg">Escanear Comanda</span>
+                <p class="text-xs text-gray-500">Fotografe para Iniciar ou Finalizar</p>
+            </label>
+        </div>
+
+        <!-- Status de Processamento -->
+        <div id="status-ocr" class="hidden mb-4 p-4 bg-blue-100 rounded-lg text-center">
+            <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-8 w-8 mb-2 mx-auto"></div>
+            <p class="text-sm text-blue-800 font-semibold" id="status-texto">Lendo comanda...</p>
+        </div>
+
+        <!-- Lista de Pedidos em Produção -->
+        <h2 class="font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <i data-lucide="flame"></i> Em Produção
+        </h2>
+        <div id="lista-producao" class="space-y-3 mb-8">
+            <!-- Itens inseridos via JS -->
+            <p class="text-center text-gray-400 text-sm py-4">Nenhum pedido no forno.</p>
+        </div>
+
+    </main>
+
+    <!-- Modal de Detalhes do Pedido -->
+    <div id="modal-pedido" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-md p-5 overflow-y-auto max-h-[90vh]">
+            <h3 class="text-lg font-bold mb-4" id="modal-titulo">Confirmar Dados</h3>
+            
+            <form id="form-pedido" onsubmit="salvarPedido(event)">
+                <input type="hidden" id="pedido-id-interno">
+                <input type="hidden" id="pedido-acao"> <!-- start ou stop -->
+
+                <div class="grid gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Nº Pedido</label>
+                        <input type="number" id="inp-numero" class="w-full border p-2 rounded" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Sabor</label>
+                        <input type="text" id="inp-sabor" class="w-full border p-2 rounded" placeholder="Ex: Calabresa" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Tamanho</label>
+                        <select id="inp-tamanho" class="w-full border p-2 rounded">
+                            <option value="Grande">Grande</option>
+                            <option value="Média">Média</option>
+                            <option value="Pequena">Pequena</option>
+                            <option value="Gigante">Gigante</option>
+                            <option value="Broto">Broto</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Ocorrências (Opcional)</label>
+                        <textarea id="inp-ocorrencia" class="w-full border p-2 rounded" rows="2" placeholder="Ex: Borda queimada, atraso motoboy"></textarea>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <button type="button" onclick="fecharModal('modal-pedido')" class="flex-1 bg-gray-300 text-gray-700 p-2 rounded">Cancelar</button>
+                    <button type="submit" class="flex-1 bg-yellow-600 text-white p-2 rounded font-bold">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Configurações/Relatórios -->
+    <div id="modal-config" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-end sm:items-center justify-center">
+        <div class="bg-white rounded-t-xl sm:rounded-xl w-full max-w-md p-5 h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">Menu & Relatórios</h3>
+                <button onclick="fecharModal('modal-config')"><i data-lucide="x"></i></button>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-bold mb-1">Colaborador Atual</label>
+                <select id="select-colaborador" class="w-full border p-2 rounded mb-2" onchange="mudarColaborador()">
+                    <option value="">Selecione...</option>
+                </select>
+                <div class="flex gap-2">
+                    <input type="text" id="novo-colaborador" placeholder="Novo nome" class="border p-2 rounded flex-1 text-sm">
+                    <button onclick="addColaborador()" class="bg-green-600 text-white px-3 rounded text-sm">Add</button>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="mb-6">
+                <h4 class="font-bold mb-2">Relatório do Dia</h4>
+                <div class="grid grid-cols-2 gap-2 text-center mb-4">
+                    <div class="bg-gray-100 p-2 rounded">
+                        <span class="block text-2xl font-bold text-yellow-600" id="rel-total">0</span>
+                        <span class="text-xs text-gray-500">Pizzas</span>
+                    </div>
+                    <div class="bg-gray-100 p-2 rounded">
+                        <span class="block text-2xl font-bold text-blue-600" id="rel-media">0m</span>
+                        <span class="text-xs text-gray-500">Tempo Médio</span>
+                    </div>
+                </div>
+                
+                <h5 class="text-sm font-bold mb-1">Histórico Recente</h5>
+                <ul id="lista-historico" class="text-xs space-y-1 mb-4 max-h-40 overflow-y-auto">
+                    <!-- Histórico -->
+                </ul>
+
+                <button onclick="enviarWhatsapp()" class="w-full bg-green-500 hover:bg-green-600 text-white p-3 rounded-lg flex items-center justify-center gap-2 font-bold shadow">
+                    <i data-lucide="message-circle"></i> Enviar Relatório WhatsApp
+                </button>
+                
+                <button onclick="limparDados()" class="mt-4 text-red-500 text-xs underline w-full text-center">Limpar todos os dados</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de Navegação Inferior -->
+    <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around p-3 z-40">
+        <button onclick="fecharModal('modal-config')" class="text-yellow-600 flex flex-col items-center">
+            <i data-lucide="home"></i>
+            <span class="text-xs">Início</span>
+        </button>
+        <button onclick="mostrarConfig()" class="text-gray-500 flex flex-col items-center">
+            <i data-lucide="bar-chart-2"></i>
+            <span class="text-xs">Relatórios</span>
+        </button>
+    </nav>
+
+    <script>
+        // --- 1. Estado e Inicialização ---
+        let db = {
+            colaboradores: JSON.parse(localStorage.getItem('saturnino_colaboradores')) || ['João', 'Maria', 'Pizzaiolo Chefe'],
+            pedidosEmAndamento: JSON.parse(localStorage.getItem('saturnino_andamento')) || [],
+            historico: JSON.parse(localStorage.getItem('saturnino_historico')) || [],
+            colaboradorAtual: localStorage.getItem('saturnino_atual') || ''
+        };
+
+        // Inicializa ícones e tela
+        lucide.createIcons();
+        atualizarUI();
+
+        // --- 2. Funções de OCR e Processamento ---
+        async function processarImagem(input) {
+            if (!db.colaboradorAtual) {
+                alert("Por favor, selecione o colaborador no menu antes de começar.");
+                input.value = ""; // Reset
+                mostrarConfig();
+                return;
+            }
+
+            const file = input.files[0];
+            if (!file) return;
+
+            // UI Loading
+            document.getElementById('status-ocr').classList.remove('hidden');
+            document.getElementById('status-texto').innerText = "Processando imagem... Isso pode levar alguns segundos.";
+
+            try {
+                // Tesseract OCR
+                const worker = await Tesseract.createWorker('por');
+                const ret = await worker.recognize(file);
+                await worker.terminate();
+                
+                const textoExtraido = ret.data.text;
+                console.log("Texto OCR:", textoExtraido);
+
+                // Lógica de Extração (Regex Simples)
+                // Tenta achar "Pedido 1234" ou "#1234" ou apenas números grandes isolados
+                let numeroPedido = extrairNumeroPedido(textoExtraido);
+                let sabor = extrairSabor(textoExtraido); // Muito difícil ser preciso, mas tentaremos
+                let tamanho = extrairTamanho(textoExtraido);
+
+                // Verifica se é START ou STOP
+                const index = db.pedidosEmAndamento.findIndex(p => p.numero == numeroPedido);
+                
+                abrirModalConfirmacao(index, numeroPedido, sabor, tamanho);
+
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao ler imagem. Tente novamente ou digite manualmente.");
+                abrirModalConfirmacao(-1, "", "", ""); // Abre vazio para manual
+            } finally {
+                document.getElementById('status-ocr').classList.add('hidden');
+                input.value = ""; // Reset input
+            }
+        }
+
+        function extrairNumeroPedido(texto) {
+            // Procura padrões comuns em tickets: "Pedido: 123", "Senha: 123", "#123"
+            const regex = /(?:pedido|senha|cupom|nº|#)\s*:?\s*(\d+)/i;
+            const match = texto.match(regex);
+            if (match) return match[1];
+            
+            // Fallback: Procura o primeiro número de 3 a 5 dígitos isolado
+            const regexNum = /\b\d{3,5}\b/;
+            const matchNum = texto.match(regexNum);
+            return matchNum ? matchNum[0] : "";
+        }
+
+        function extrairTamanho(texto) {
+            texto = texto.toLowerCase();
+            if (texto.includes("fam") || texto.includes("gig")) return "Gigante";
+            if (texto.includes("gra")) return "Grande";
+            if (texto.includes("med") || texto.includes("méd")) return "Média";
+            if (texto.includes("peq")) return "Pequena";
+            if (texto.includes("bro")) return "Broto";
+            return "Grande"; // Padrão
+        }
+
+        function extrairSabor(texto) {
+            // Simplificado: Pega a linha após "Produto" ou tenta chutar. 
+            // OCR de sabor é complexo sem IA treinada, deixamos o usuário corrigir.
+            return ""; 
+        }
+
+        // --- 3. Lógica de UI (Modais e Formulários) ---
+        function abrirModalConfirmacao(indexExistente, numero, sabor, tamanho) {
+            const modal = document.getElementById('modal-pedido');
+            const titulo = document.getElementById('modal-titulo');
+            const inpNum = document.getElementById('inp-numero');
+            const inpSabor = document.getElementById('inp-sabor');
+            const inpTam = document.getElementById('inp-tamanho');
+            
+            inpNum.value = numero || '';
+            inpSabor.value = sabor || '';
+            if(tamanho) inpTam.value = tamanho;
+
+            document.getElementById('pedido-id-interno').value = indexExistente; // -1 se novo
+
+            if (indexExistente > -1) {
+                // Finalizar
+                titulo.innerText = "Finalizar Pedido (Conferência)";
+                document.getElementById('pedido-acao').value = 'stop';
+                // Preenche dados salvos anteriormente para facilitar
+                const dadosSalvos = db.pedidosEmAndamento[indexExistente];
+                inpSabor.value = dadosSalvos.sabor;
+                inpTam.value = dadosSalvos.tamanho;
+                inpNum.readOnly = true; // Não muda o número no checkout
+            } else {
+                // Iniciar
+                titulo.innerText = "Iniciar Produção";
+                document.getElementById('pedido-acao').value = 'start';
+                inpNum.readOnly = false;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function fecharModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function salvarPedido(e) {
+            e.preventDefault();
+            const numero = document.getElementById('inp-numero').value;
+            const sabor = document.getElementById('inp-sabor').value;
+            const tamanho = document.getElementById('inp-tamanho').value;
+            const ocorrencia = document.getElementById('inp-ocorrencia').value;
+            const acao = document.getElementById('pedido-acao').value;
+            const index = document.getElementById('pedido-id-interno').value;
+            
+            const agora = new Date();
+
+            if (acao === 'start') {
+                // Cria novo registro
+                const novoPedido = {
+                    numero,
+                    sabor,
+                    tamanho,
+                    inicio: agora.toISOString(),
+                    colaborador: db.colaboradorAtual,
+                    ocorrencia
+                };
+                db.pedidosEmAndamento.push(novoPedido);
+            } else {
+                // Finaliza registro
+                const pedido = db.pedidosEmAndamento[index];
+                const inicio = new Date(pedido.inicio);
+                const diffMs = agora - inicio; // Diferença em milisegundos
+                const diffMin = Math.round(diffMs / 60000);
+
+                const finalizado = {
+                    ...pedido,
+                    fim: agora.toISOString(),
+                    duracaoMinutos: diffMin,
+                    ocorrencia: ocorrencia || pedido.ocorrencia // Atualiza ocorrencia se tiver nova
+                };
+
+                // Move para histórico
+                db.historico.push(finalizado);
+                db.pedidosEmAndamento.splice(index, 1);
+            }
+
+            salvarBanco();
+            atualizarUI();
+            fecharModal('modal-pedido');
+            document.getElementById('form-pedido').reset();
+        }
+
+        // --- 4. Persistência e Atualização ---
+        function salvarBanco() {
+            localStorage.setItem('saturnino_andamento', JSON.stringify(db.pedidosEmAndamento));
+            localStorage.setItem('saturnino_historico', JSON.stringify(db.historico));
+            localStorage.setItem('saturnino_colaboradores', JSON.stringify(db.colaboradores));
+            localStorage.setItem('saturnino_atual', db.colaboradorAtual);
+        }
+
+        function atualizarUI() {
+            // Atualiza Header
+            const displayColab = document.getElementById('colaborador-display');
+            displayColab.innerText = db.colaboradorAtual ? `Olá, ${db.colaboradorAtual}` : 'Selecione um colaborador';
+            
+            // Lista Em Produção
+            const lista = document.getElementById('lista-producao');
+            lista.innerHTML = '';
+            
+            if (db.pedidosEmAndamento.length === 0) {
+                lista.innerHTML = '<p class="text-center text-gray-400 text-sm py-4">Nenhum pedido no forno.</p>';
+            } else {
+                db.pedidosEmAndamento.forEach(p => {
+                    const horaInicio = dayjs(p.inicio).format('HH:mm');
+                    lista.innerHTML += `
+                        <div class="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500 flex justify-between items-center">
+                            <div>
+                                <span class="font-bold text-lg">#${p.numero}</span>
+                                <p class="text-sm text-gray-600">${p.sabor} (${p.tamanho})</p>
+                                <p class="text-xs text-gray-400">Iniciado às ${horaInicio} por ${p.colaborador}</p>
+                            </div>
+                            <div class="text-yellow-600 font-bold animate-pulse">
+                                Assando
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            // Atualiza Relatórios na Modal
+            atualizarRelatorios();
+        }
+
+        // --- 5. Relatórios e Configurações ---
+        function mostrarConfig() {
+            const modal = document.getElementById('modal-config');
+            const select = document.getElementById('select-colaborador');
+            
+            // Popula select
+            select.innerHTML = '<option value="">Selecione...</option>';
+            db.colaboradores.forEach(c => {
+                select.innerHTML += `<option value="${c}" ${c === db.colaboradorAtual ? 'selected' : ''}>${c}</option>`;
+            });
+
+            modal.classList.remove('hidden');
+            atualizarRelatorios();
+        }
+
+        function mudarColaborador() {
+            const select = document.getElementById('select-colaborador');
+            db.colaboradorAtual = select.value;
+            salvarBanco();
+            atualizarUI();
+        }
+
+        function addColaborador() {
+            const nome = document.getElementById('novo-colaborador').value;
+            if (nome) {
+                db.colaboradores.push(nome);
+                document.getElementById('novo-colaborador').value = '';
+                salvarBanco();
+                mostrarConfig(); // recarrega lista
+            }
+        }
+
+        function atualizarRelatorios() {
+            // Filtra histórico de hoje
+            const hoje = dayjs().format('YYYY-MM-DD');
+            const historicoHoje = db.historico.filter(p => dayjs(p.fim).format('YYYY-MM-DD') === hoje);
+
+            document.getElementById('rel-total').innerText = historicoHoje.length;
+
+            let somaTempo = 0;
+            const listaHist = document.getElementById('lista-historico');
+            listaHist.innerHTML = '';
+
+            historicoHoje.forEach(p => {
+                somaTempo += p.duracaoMinutos;
+                listaHist.innerHTML += `
+                    <li class="border-b py-1 flex justify-between">
+                        <span>#${p.numero} - ${p.sabor}</span>
+                        <span class="font-bold">${p.duracaoMinutos} min</span>
+                    </li>
+                `;
+            });
+
+            const media = historicoHoje.length ? Math.round(somaTempo / historicoHoje.length) : 0;
+            document.getElementById('rel-media').innerText = media + 'm';
+        }
+
+        function enviarWhatsapp() {
+            const hoje = dayjs().format('DD/MM/YYYY');
+            const historicoHoje = db.historico.filter(p => dayjs(p.fim).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD'));
+            
+            let total = historicoHoje.length;
+            let somaTempo = 0;
+            let ocorrencias = [];
+            let sabores = {};
+
+            historicoHoje.forEach(p => {
+                somaTempo += p.duracaoMinutos;
+                if(p.ocorrencia) ocorrencias.push(`Ped #${p.numero}: ${p.ocorrencia}`);
+                
+                if(!sabores[p.sabor]) sabores[p.sabor] = 0;
+                sabores[p.sabor]++;
+            });
+
+            const media = total ? Math.round(somaTempo / total) : 0;
+
+            // Formata Texto
+            let msg = `*Relatório Saturnino Pizzaria - ${hoje}*\n`;
+            msg += `--------------------------------\n`;
+            msg += `🍕 *Total Produzido:* ${total}\n`;
+            msg += `⏱️ *Tempo Médio:* ${media} min\n\n`;
+            
+            msg += `*Por Sabor:*\n`;
+            for (const [sab, qtd] of Object.entries(sabores)) {
+                msg += `- ${sab}: ${qtd}\n`;
+            }
+
+            if(ocorrencias.length > 0) {
+                msg += `\n⚠️ *Ocorrências:*\n`;
+                msg += ocorrencias.join('\n');
+            }
+
+            const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+            window.open(url, '_blank');
+        }
+        
+        function limparDados() {
+            if(confirm("Tem certeza? Isso apagará todo o histórico.")) {
+                localStorage.clear();
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
